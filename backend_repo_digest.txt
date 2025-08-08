@@ -1,0 +1,1178 @@
+Repository Source Code Contents
+Generated on: Thu Aug  7 23:37:52 IST 2025
+----------------------------------------
+File: ./models.py
+----------------------------------------
+# ============================================================================
+# File: models.py (NEW FILE)
+# Enhanced Pydantic models for onboarding data
+# ============================================================================
+
+from pydantic import BaseModel
+from typing import Dict, Any, List, Optional
+from enum import Enum
+
+class LearnerLevel(str, Enum):
+    COMPLETE_BEGINNER = "complete-beginner"
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+
+class CourseStyle(str, Enum):
+    HANDS_ON = "hands-on"
+    BALANCED = "balanced"
+    CONCEPT_HEAVY = "concept-heavy"
+
+class TotalTime(str, Enum):
+    FOUR_HOURS = "4-hours"
+    ONE_TWO_WEEKS = "1-2-weeks"
+    ONE_MONTH = "1-month"
+    TWO_THREE_MONTHS = "2-3-months"
+
+class DailyTime(str, Enum):
+    THIRTY_MIN = "30-min"
+    ONE_HOUR = "1-hour"
+    TWO_THREE_HOURS = "2-3-hours"
+
+class TechnicalBackground(BaseModel):
+    programming: List[str] = []
+    math: List[str] = []
+    domain: List[str] = []
+
+class OnboardingData(BaseModel):
+    goal: Optional[str] = None
+    learner_level_detailed: Optional[LearnerLevel] = None
+    course_material_detailed: Optional[CourseStyle] = None
+    total_time_detailed: Optional[TotalTime] = None
+    daily_time_detailed: Optional[DailyTime] = None
+    technical_background: Optional[TechnicalBackground] = None
+----------------------------------------
+File: ./prompts.py
+----------------------------------------
+# ============================================================================
+# File: prompts.py 
+# Enhanced prompts that use rich onboarding data
+# ============================================================================
+
+COURSE_STRUCTURE_PROMPT = """
+You are an expert data science educator. Create a course structure for: {topic}
+
+Student Profile:
+- Primary Goal: {goal}
+- Experience Level: {level} (Detailed: {detailed_level})
+- Learning Style: {style} (Detailed: {detailed_style})
+- Total Time Available: {total_hours} hours ({detailed_total_time})
+- Daily Commitment: {daily_minutes} minutes ({detailed_daily_time})
+
+Technical Background Assessment:
+Programming Experience: {programming_skills}
+Mathematics Background: {math_background}  
+Domain Knowledge: {domain_knowledge}
+
+Based on this detailed profile:
+1. Leverage their existing technical skills
+2. Fill identified knowledge gaps
+3. Adapt content complexity to their experience
+4. Align projects with their stated goal
+5. Structure modules to fit their time constraints
+
+Create a modular course where each module is 30-60 minutes.
+
+Return JSON:
+{{
+  "title": "Personalized Course Title",
+  "total_modules": number,
+  "student_profile_summary": "Brief summary of their background and goals",
+  "learning_path_rationale": "Why this path was chosen for them",
+  "modules": [
+    {{
+      "id": "mod_1",
+      "title": "Module Title",
+      "learning_objectives": ["objective1", "objective2"],
+      "topics": ["topic1", "topic2"],
+      "estimated_minutes": 45,
+      "difficulty_level": "beginner|intermediate|advanced",
+      "prerequisites_covered": ["skill1", "skill2"],
+      "aligns_with_goal": "How this module helps their stated goal"
+    }}
+  ],
+  "personalization_notes": {{
+    "skipped_basics": ["concept1", "concept2"],
+    "emphasis_areas": ["area1", "area2"],
+    "recommended_pace": "Based on their time commitment"
+  }}
+}}
+"""
+
+MODULE_CONTENT_PROMPT = """
+Create a {style} lesson for: {module_title}
+
+Student Context:
+- Goal: {goal}
+- Experience Level: {level}
+- Programming Skills: {programming_skills}
+- Math Background: {math_background}
+- Previous Knowledge: {domain_knowledge}
+
+Module Details:
+- Topics to cover: {topics}
+- Learning objectives: {objectives}
+- Target duration: {duration} minutes
+- Difficulty level: {difficulty_level}
+
+Personalization Instructions:
+- Skip basics they already know: {skip_basics}
+- Emphasize: {emphasis_areas}
+- Connect to their goal: {goal_connection}
+
+Format:
+1. Start with personalized introduction acknowledging their background
+2. Include {theory_percent}% theory and {code_percent}% hands-on code
+3. Use examples relevant to their goal ({goal})
+4. Add 2-3 exercises matching their programming level
+5. Provide "next steps" that build toward their goal
+
+Structure your response as:
+## Personalized Introduction
+[Acknowledge their background and connect to goals]
+
+## Core Concepts  
+[Theory explanation adapted to their math/programming level]
+
+## Practical Application
+[Code examples using libraries they're comfortable with]
+
+## Hands-on Exercises
+[2-3 exercises matching their skill level]
+
+## Goal Connection
+[How this module advances their stated goal]
+"""
+
+EXERCISE_GENERATOR_PROMPT = """
+Create a Python coding exercise for: {topic}
+
+Student Profile:
+- Programming Level: {programming_level}
+- Math Background: {math_level}
+- Goal: {goal}
+- Previous Domain Experience: {domain_experience}
+
+Exercise Requirements:
+- Difficulty: {difficulty}
+- Focus: {focus_area}
+- Time to complete: ~{estimated_minutes} minutes
+
+Personalization:
+- Use libraries they're familiar with: {familiar_libraries}
+- Avoid concepts they haven't learned: {avoid_concepts}
+- Connect to their goal: {goal}
+
+Return JSON:
+{{
+  "title": "Exercise Title (Goal-Aligned)",
+  "description": "What student needs to do (with goal context)",
+  "starter_code": "def function_name():\\n    # Your code here\\n    # Hint: Use {familiar_concept} that you learned in {previous_experience}\\n    pass",
+  "hints": [
+    "Beginner-friendly hint based on their background",
+    "Progressive hint building on their {programming_level} skills", 
+    "Advanced hint connecting to their {goal}"
+  ],
+  "solution": "Complete solution with comments explaining concepts",
+  "test_cases": [
+    {{"input": "test input", "expected": "expected output"}},
+    {{"input": "edge case relevant to {goal}", "expected": "expected output"}}
+  ],
+  "learning_notes": "What they should learn from this exercise",
+  "goal_connection": "How this exercise helps achieve their {goal}"
+}}
+"""
+
+COACH_HINT_PROMPT = """
+Student Profile:
+- Goal: {goal} 
+- Experience: {experience_level}
+- Programming Background: {programming_background}
+- Math Background: {math_background}
+
+Current Situation:
+- Working on: {exercise_title}
+- Their code: {user_code}
+- Error (if any): {error}
+- Attempt number: {attempt}
+- Time spent: {time_spent} minutes
+
+Coaching Instructions:
+1. Reference their background knowledge positively
+2. Connect hints to concepts they already understand
+3. If attempt > 3, provide more specific guidance
+4. Always encourage and relate back to their goal
+5. Use their programming experience level to calibrate hint complexity
+
+Provide a helpful, personalized hint that:
+- Acknowledges their {experience_level} level
+- Builds on their {programming_background} background  
+- Connects to their goal of {goal}
+- Is appropriately technical for their skill level
+"""
+----------------------------------------
+File: ./llm_service.py
+----------------------------------------
+import requests
+from typing import Dict, Any
+import json
+import os
+from tenacity import retry, wait_exponential, stop_after_attempt
+
+class LLMService:
+    def __init__(self, model: str = "openai/gpt-oss-20b:free"):
+        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY environment variable is required")
+        
+        self.base_url = "https://openrouter.ai/api/v1"
+        self.model = model
+        
+    @retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(3))
+    def generate(self, system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
+        """Basic LLM generation with retry logic"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://your-app.com",  # Optional: for OpenRouter analytics
+            "X-Title": "Data Science Course Generator"  # Optional: for OpenRouter analytics
+        }
+        
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": temperature
+        }
+        
+        response = requests.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"API request failed: {response.status_code} - {response.text}")
+        
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+    
+    def generate_json(self, system_prompt: str, user_prompt: str) -> Dict:
+        """Generate and parse JSON response"""
+        response = self.generate(system_prompt, user_prompt, temperature=0.3)
+        
+        # Extract JSON from response (handle markdown code blocks)
+        if "```json" in response:
+            response = response.split("```json")[1].split("```")[0]
+        elif "```" in response:
+            response = response.split("```")[1].split("```")[0]
+        
+        try:
+            return json.loads(response.strip())
+        except json.JSONDecodeError as e:
+            # If JSON parsing fails, try to extract just the JSON part
+            import re
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+            raise Exception(f"Failed to parse JSON response: {e}")
+    
+    def set_model(self, model: str):
+        """Switch models on the fly"""
+        self.model = model
+----------------------------------------
+File: ./coach_service.py
+----------------------------------------
+# ============================================================================
+# File: coach_service.py
+# Enhanced coach service with personalization
+# ============================================================================
+
+from typing import Optional, List, Dict 
+from llm_service import LLMService
+from prompts import COACH_HINT_PROMPT
+
+class CoachService:
+    def __init__(self, model: str = "openai/gpt-oss-20b:free"):
+        self.llm = LLMService(model=model)
+        self.motivation_messages = [
+            "Great progress! You're {percent}% through this module!",
+            "Keep going! Just {remaining} minutes left in this session.", 
+            "Nice work! You've completed {count} exercises so far.",
+            "You're doing great! Remember, every expert was once a beginner.",
+            "Stuck? That's normal! Try breaking down the problem into smaller steps."
+        ]
+    
+    def set_model(self, model: str):
+        """Switch models for the coach service"""
+        self.llm.set_model(model)
+
+    def get_hint(self, exercise: Dict, user_code: str, attempt: int, 
+                 student_context: Dict = None, error: Optional[str] = None) -> str:
+        """Generate contextual hint using student background"""
+        
+        # Use student context if available, otherwise use defaults
+        context = student_context or {
+            'goal': 'general learning',
+            'experience_level': 'beginner',
+            'programming_skills': ['basic'],
+            'math_background': ['high-school'],
+            'time_spent': 0
+        }
+        
+        prompt = COACH_HINT_PROMPT.format(
+            goal=context.get('goal', 'general learning'),
+            experience_level=context.get('experience_level', 'beginner'),
+            programming_background=', '.join(context.get('programming_skills', [])) or 'basic',
+            math_background=', '.join(context.get('math_background', [])) or 'high school level',
+            exercise_title=exercise.get('title', ''),
+            user_code=user_code,
+            error=error or "No error",
+            attempt=attempt,
+            time_spent=context.get('time_spent', 0)
+        )
+        
+        hint = self.llm.generate(
+            "You are a supportive, personalized coding tutor. Adapt your teaching style to the student's background.",
+            prompt,
+            temperature=0.6
+        )
+        return hint
+    
+    def answer_question(self, question: str, context: Dict, student_context: Dict = None) -> str:
+        """Answer conceptual questions with personalization"""
+        
+        student_info = ""
+        if student_context:
+            student_info = f"""
+            Student Background:
+            - Goal: {student_context.get('goal', 'general learning')}
+            - Experience: {student_context.get('experience_level', 'beginner')}
+            - Programming: {', '.join(student_context.get('programming_skills', [])) or 'basic'}
+            """
+        
+        prompt = f"""
+        {student_info}
+        
+        Current Context: {context.get('module_title', 'Unknown')}
+        Student Question: {question}
+        
+        Provide a clear, personalized answer that:
+        1. Matches their experience level
+        2. References concepts they already know
+        3. Connects to their learning goal
+        4. Uses appropriate technical depth
+        
+        Keep it under 200 words and be encouraging.
+        """
+        
+        answer = self.llm.generate(
+            "You are a knowledgeable data science tutor who personalizes explanations.",
+            prompt
+        )
+        return answer
+    
+    def get_motivation(self, progress: float, time_spent: int, exercises_done: int, 
+                      student_context: Dict = None) -> str:
+        """Generate motivational message with personalization"""
+        
+        goal = student_context.get('goal', 'learning') if student_context else 'learning'
+        
+        if progress < 0.3:
+            return f"Great start on your {goal} journey! You're {int(progress*100)}% through this module."
+        elif progress < 0.7:
+            return f"Halfway there! You're making excellent progress toward your {goal} goal."
+        elif progress < 0.9:
+            return f"Almost done! Just a little more to master this concept for your {goal}."
+        else:
+            return f"Fantastic! You're about to complete this module. Your {goal} skills are growing!"
+    
+    def check_understanding(self, module_content: str, user_responses: List[str], 
+                           student_context: Dict = None) -> Dict:
+        """Personalized comprehension check"""
+        
+        context_info = ""
+        if student_context:
+            context_info = f"Student goal: {student_context.get('goal', 'learning')}, Experience: {student_context.get('experience_level', 'beginner')}"
+        
+        prompt = f"""
+        {context_info}
+        Module covered: {module_content[:500]}...
+        Student responses to exercises: {user_responses}
+        
+        Based on their background and responses, assess:
+        1. Understanding level (1-5) 
+        2. Areas needing reinforcement
+        3. Readiness for next concepts
+        4. Personalized feedback for their goal
+        
+        Return JSON: {{"understanding": 1-5, "weak_areas": [], "feedback": "...", "next_recommendations": []}}
+        """
+        
+        assessment = self.llm.generate_json(
+            "Assess student understanding with personalized recommendations.",
+            prompt
+        )
+        return assessment
+----------------------------------------
+File: ./test_openrouter.py
+----------------------------------------
+import requests
+import json
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def test_openrouter():
+    # Try to get API key from environment first, then fallback to hardcoded
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+    
+    if not OPENROUTER_API_KEY:
+        # If no environment variable, ask for input
+        print("🔑 OpenRouter API Key not found in environment variables.")
+        print("You can either:")
+        print("1. Set environment variable: export OPENROUTER_API_KEY='your-key'")
+        print("2. Enter it below (or edit the script)")
+        print()
+        OPENROUTER_API_KEY = input("Enter your OpenRouter API key: ").strip()
+    
+    if not OPENROUTER_API_KEY or OPENROUTER_API_KEY == "your-key-here":
+        print("❌ No valid API key provided!")
+        print("Get your key from: https://openrouter.ai/keys")
+        return
+    
+    print(f"🔑 Using API key: {OPENROUTER_API_KEY[:10]}...{OPENROUTER_API_KEY[-4:]}")
+    
+    # Test with a simpler request first
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    # Simple test payload
+    payload = {
+        "model": "google/gemma-3n-e2b-it:free",
+        "messages": [
+            {"role": "user", "content": "Say hello"}
+        ],
+        "max_tokens": 50
+    }
+    
+    print("🧪 Testing simple request first...")
+    
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        
+        print(f"📡 Response Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            print("✅ API Key works! Testing course generation...")
+            test_course_generation(OPENROUTER_API_KEY)
+        elif response.status_code == 401:
+            print("❌ Invalid API key!")
+            print("Response:", response.json())
+            print("\n🔧 Troubleshooting:")
+            print("1. Make sure you copied the FULL key from https://openrouter.ai/keys")
+            print("2. The key should start with 'sk-or-v1-'")
+            print("3. Try creating a new key")
+        elif response.status_code == 429:
+            print("⚠️ Rate limited - but API key works!")
+            print("Free model limits: 20 req/min, 50 req/day")
+        else:
+            print(f"❌ Error: {response.status_code}")
+            print("Response:", response.text)
+            
+    except Exception as e:
+        print(f"💥 Error: {e}")
+
+def test_course_generation(api_key):
+    """Test the actual course generation"""
+    
+    prompt = """Create a course structure for: Python for Data Science
+
+Student Profile:
+- Level: beginner
+- Style Preference: practical
+- Total Time: 10 hours
+- Daily Time: 30 minutes per day
+
+Create a modular course where each module is 30-60 minutes.
+
+Return JSON with this structure:
+{
+  "title": "Course Title",
+  "total_modules": 5,
+  "modules": [
+    {
+      "id": "mod_1",
+      "title": "Module Title", 
+      "learning_objectives": ["objective1", "objective2"],
+      "topics": ["topic1", "topic2"],
+      "estimated_minutes": 45
+    }
+  ]
+}"""
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "openai/gpt-oss-20b:free",
+        "messages": [
+            {"role": "system", "content": "You are a course designer. Return only valid JSON."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.3
+    }
+    
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            content = result["choices"][0]["message"]["content"]
+            
+            print("✅ Course Generation SUCCESS!")
+            print("Raw response:")
+            print("-" * 50)
+            print(content)
+            print("-" * 50)
+            
+            # Try to parse JSON
+            try:
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0]
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0]
+                
+                course_data = json.loads(content.strip())
+                print("🎉 JSON Parse SUCCESS!")
+                print(f"📚 Title: {course_data.get('title')}")
+                print(f"📦 Modules: {course_data.get('total_modules')}")
+                
+            except json.JSONDecodeError as e:
+                print(f"⚠️ JSON parse failed: {e}")
+                print("But the API call worked!")
+                
+        else:
+            print(f"❌ Course generation failed: {response.status_code}")
+            print(response.text)
+            
+    except Exception as e:
+        print(f"💥 Course generation error: {e}")
+
+if __name__ == "__main__":
+    test_openrouter()
+----------------------------------------
+File: ./main.py
+----------------------------------------
+# ============================================================================
+# File: main.py
+# Enhanced FastAPI app with rich onboarding data handling
+# ============================================================================
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Dict, Any, List, Optional
+import uuid
+import logging
+from llm_service import LLMService
+from coach_service import CoachService
+from models import OnboardingData, TechnicalBackground
+from prompts import (
+    COURSE_STRUCTURE_PROMPT, 
+    MODULE_CONTENT_PROMPT, 
+    EXERCISE_GENERATOR_PROMPT,
+    COACH_HINT_PROMPT
+)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Learning Platform API", version="2.0.0")
+
+# Enable CORS for React frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Enhanced in-memory storage with richer data
+sessions = {}
+
+# Updated CourseRequest model with optional rich data
+class CourseRequest(BaseModel):
+    topic: str
+    level: str
+    style: str
+    total_hours: int
+    daily_minutes: int
+    onboarding_data: Optional[OnboardingData] = None  # Rich onboarding data
+
+class QuestionRequest(BaseModel):
+    question: str
+    context: Dict[str, Any]
+
+class HintRequest(BaseModel):
+    exercise: Dict[str, Any]
+    user_code: str
+    attempt: int
+    time_spent: Optional[int] = 0
+
+@app.post("/api/generate-course")
+async def generate_course(request: CourseRequest):
+    """
+    Enhanced course generation endpoint that uses rich onboarding data
+    """
+    try:
+        session_id = str(uuid.uuid4())
+        llm = LLMService("openai/gpt-oss-20b:free")
+        
+        # Log the enhanced data we received
+        logger.info(f"Generating course for session {session_id}")
+        logger.info(f"Basic request: {request.topic}, {request.level}, {request.style}")
+        
+        if request.onboarding_data:
+            logger.info(f"Rich onboarding data received:")
+            logger.info(f"  Goal: {request.onboarding_data.goal}")
+            logger.info(f"  Detailed level: {request.onboarding_data.learner_level_detailed}")
+            if request.onboarding_data.technical_background:
+                logger.info(f"  Programming skills: {request.onboarding_data.technical_background.programming}")
+                logger.info(f"  Math background: {request.onboarding_data.technical_background.math}")
+                logger.info(f"  Domain knowledge: {request.onboarding_data.technical_background.domain}")
+
+        # Prepare enhanced prompt data
+        onboarding = request.onboarding_data or OnboardingData()
+        tech_bg = onboarding.technical_background or TechnicalBackground()
+        
+        # Generate enhanced course structure using existing prompt
+        course_prompt = COURSE_STRUCTURE_PROMPT.format(
+            topic=request.topic,
+            goal=onboarding.goal or "general learning",
+            level=request.level,
+            detailed_level=onboarding.learner_level_detailed or request.level,
+            style=request.style,
+            detailed_style=onboarding.course_material_detailed or request.style,
+            total_hours=request.total_hours,
+            detailed_total_time=onboarding.total_time_detailed or f"{request.total_hours} hours",
+            daily_minutes=request.daily_minutes,
+            detailed_daily_time=onboarding.daily_time_detailed or f"{request.daily_minutes} minutes",
+            programming_skills=", ".join(tech_bg.programming) if tech_bg.programming else "No prior programming experience",
+            math_background=", ".join(tech_bg.math) if tech_bg.math else "High school level",
+            domain_knowledge=", ".join(tech_bg.domain) if tech_bg.domain else "No prior experience"
+        )
+        
+        course_structure = llm.generate_json(
+            "You are an expert course designer who personalizes learning based on student background. Return valid JSON only.",
+            course_prompt
+        )
+        
+        # Store enhanced session data
+        sessions[session_id] = {
+            "course": course_structure,
+            "request": request.dict(),
+            "onboarding_data": onboarding.dict() if onboarding else None,
+            "coach": CoachService("openai/gpt-oss-20b:free"),
+            "personalization_context": {
+                "goal": onboarding.goal,
+                "programming_skills": tech_bg.programming,
+                "math_background": tech_bg.math,
+                "domain_knowledge": tech_bg.domain,
+                "experience_level": onboarding.learner_level_detailed
+            }
+        }
+        
+        logger.info(f"Course generated successfully with {len(course_structure.get('modules', []))} modules")
+        
+        return {
+            "session_id": session_id,
+            "course": course_structure,
+            "personalization_applied": bool(request.onboarding_data),
+            "student_profile": {
+                "goal": onboarding.goal,
+                "experience": onboarding.learner_level_detailed,
+                "learning_style": onboarding.course_material_detailed,
+                "technical_background": tech_bg.dict() if tech_bg else None
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating course: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Course generation failed: {str(e)}")
+
+@app.get("/api/module/{session_id}/{module_index}")
+async def get_module(session_id: str, module_index: int):
+    """
+    Enhanced module content generation using personalization context
+    """
+    try:
+        if session_id not in sessions:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        session = sessions[session_id]
+        course_modules = session["course"]["modules"]
+        
+        if module_index >= len(course_modules):
+            raise HTTPException(status_code=404, detail="Module not found")
+            
+        module = course_modules[module_index]
+        personalization = session.get("personalization_context", {})
+        
+        llm = LLMService("openai/gpt-oss-20b:free")
+        
+        # Determine theory/practice split based on learning style
+        style_ratios = {
+            "hands_on": (20, 80),
+            "balanced": (40, 60), 
+            "concept": (60, 40)
+        }
+        theory_percent, code_percent = style_ratios.get(session["request"]["style"], (40, 60))
+        
+        # Generate personalized module content using existing prompt
+        content_prompt = MODULE_CONTENT_PROMPT.format(
+            style=session["request"]["style"],
+            module_title=module["title"],
+            goal=personalization.get("goal", "learning"),
+            level=session["request"]["level"],
+            programming_skills=", ".join(personalization.get("programming_skills", [])) or "basic",
+            math_background=", ".join(personalization.get("math_background", [])) or "high school",
+            domain_knowledge=", ".join(personalization.get("domain_knowledge", [])) or "none",
+            topics=", ".join(module["topics"]),
+            objectives=", ".join(module["learning_objectives"]),
+            duration=module["estimated_minutes"],
+            difficulty_level=module.get("difficulty_level", "beginner"),
+            skip_basics=", ".join(session["course"].get("personalization_notes", {}).get("skipped_basics", [])),
+            emphasis_areas=", ".join(session["course"].get("personalization_notes", {}).get("emphasis_areas", [])),
+            goal_connection=module.get("aligns_with_goal", "general skill building"),
+            theory_percent=theory_percent,
+            code_percent=code_percent
+        )
+        
+        content = llm.generate(
+            "You are an expert educator who personalizes content based on student background.",
+            content_prompt
+        )
+        
+        # Generate personalized exercises using existing prompt
+        exercises = []
+        for i, topic in enumerate(module["topics"][:2]):
+            exercise_prompt = EXERCISE_GENERATOR_PROMPT.format(
+                topic=topic,
+                programming_level=personalization.get("experience_level", "beginner"),
+                math_level=", ".join(personalization.get("math_background", [])) or "basic",
+                goal=personalization.get("goal", "learning"),
+                domain_experience=", ".join(personalization.get("domain_knowledge", [])) or "none",
+                difficulty=module.get("difficulty_level", "beginner"),
+                focus_area="practical application",
+                estimated_minutes=15,
+                familiar_libraries="pandas, numpy" if "comfortable-python" in personalization.get("programming_skills", []) else "basic Python",
+                avoid_concepts="advanced statistics" if not personalization.get("math_background") else "",
+                familiar_concept="variables and functions" if "basic-python" in personalization.get("programming_skills", []) else "programming basics",
+                previous_experience=personalization.get("goal", "learning")
+            )
+            
+            exercise = llm.generate_json(
+                "Generate a personalized coding exercise. Return valid JSON only.",
+                exercise_prompt
+            )
+            exercise["id"] = f"ex_{module_index}_{i}"
+            exercises.append(exercise)
+        
+        logger.info(f"Generated personalized module {module_index} for session {session_id}")
+        
+        return {
+            "title": module["title"],
+            "content": content,
+            "exercises": exercises,
+            "estimated_minutes": module["estimated_minutes"],
+            "personalization_applied": {
+                "goal_aligned": True,
+                "skill_adapted": True,
+                "background_considered": True
+            },
+            "learning_objectives": module["learning_objectives"],
+            "difficulty_level": module.get("difficulty_level", "beginner")
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating module content: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/coach/question")
+async def ask_coach_question(request: QuestionRequest):
+    """
+    Enhanced coach that uses student context for personalized responses
+    """
+    try:
+        # Try to get session context if available
+        session_id = request.context.get("session_id")
+        personalization_context = {}
+        
+        if session_id and session_id in sessions:
+            personalization_context = sessions[session_id].get("personalization_context", {})
+            coach = sessions[session_id]["coach"]
+        else:
+            coach = CoachService("openai/gpt-oss-20b:free")
+        
+        # Create personalized coaching context
+        coaching_context = f"""
+        Student Context:
+        - Goal: {personalization_context.get('goal', 'general learning')}
+        - Experience: {personalization_context.get('experience_level', 'beginner')}
+        - Programming Background: {', '.join(personalization_context.get('programming_skills', [])) or 'basic'}
+        - Current Topic: {request.context.get('module_title', 'unknown')}
+        
+        Question: {request.question}
+        
+        Provide a personalized answer that:
+        1. Acknowledges their background and goals
+        2. Uses appropriate technical level
+        3. Connects to their stated learning objective
+        4. Encourages continued progress
+        """
+        
+        answer = coach.answer_question(coaching_context, request.context)
+        
+        return {
+            "answer": answer,
+            "personalized": bool(personalization_context),
+            "context_used": {
+                "goal": personalization_context.get('goal'),
+                "experience": personalization_context.get('experience_level')
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in coach question: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/coach/hint")
+async def get_hint(request: HintRequest):
+    """
+    Enhanced hint generation using student background
+    """
+    try:
+        # Default coaching service
+        coach = CoachService("openai/gpt-oss-20b:free")
+        
+        # Use personalized hint prompt
+        hint_prompt = COACH_HINT_PROMPT.format(
+            goal="career advancement",  # Default - could be enhanced with session context
+            experience_level="beginner",  # Default - could be enhanced with session context
+            programming_background="basic Python",  # Default - could be enhanced with session context
+            math_background="high school level",  # Default - could be enhanced with session context
+            exercise_title=request.exercise.get('title', ''),
+            user_code=request.user_code,
+            error="No error" if not request.user_code else "Check syntax",
+            attempt=request.attempt,
+            time_spent=request.time_spent or 0
+        )
+        
+        hint = coach.get_hint(request.exercise, request.user_code, request.attempt)
+        
+        return {
+            "hint": hint,
+            "attempt_number": request.attempt,
+            "encouragement": "You're making great progress! Keep going!" if request.attempt < 3 else "Don't give up! Learning takes time and practice."
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating hint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Health check endpoint
+@app.get("/api/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "version": "2.0.0",
+        "features": {
+            "enhanced_onboarding": True,
+            "personalized_content": True,
+            "context_aware_coaching": True
+        }
+    }
+
+# Analytics endpoint for tracking onboarding completion
+@app.post("/api/analytics/onboarding-completed")
+async def track_onboarding_completion(data: Dict[str, Any]):
+    """
+    Track onboarding completion for analytics
+    """
+    logger.info(f"Onboarding completed: {data}")
+    # Here you could send to analytics service, database, etc.
+    return {"status": "tracked", "timestamp": data.get("timestamp")}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+----------------------------------------
+File: ./content_generator.py
+----------------------------------------
+from typing import List, Dict
+import uuid
+from models import *
+from llm_service import LLMService
+from prompts import *
+
+class ContentGenerator:
+    def __init__(self):
+        self.llm = LLMService()
+    
+    def generate_course_structure(self, preferences: UserPreferences) -> Dict:
+        """Generate complete course structure"""
+        prompt = COURSE_STRUCTURE_PROMPT.format(
+            topic=preferences.topic,
+            level=preferences.learner_level,
+            style=preferences.course_style,
+            total_hours=preferences.total_hours,
+            daily_minutes=preferences.daily_minutes
+        )
+        
+        structure = self.llm.generate_json(
+            "You are an expert curriculum designer for data science.",
+            prompt
+        )
+        
+        # Calculate number of sessions
+        total_minutes = preferences.total_hours * 60
+        sessions = total_minutes // preferences.daily_minutes
+        
+        print(f"Generated course with {len(structure['modules'])} modules for {sessions} sessions")
+        return structure
+    
+    def generate_module_content(self, module: Dict, preferences: UserPreferences) -> Module:
+        """Generate content for a single module"""
+        # Calculate theory vs code percentages
+        style_map = {
+            CourseStyle.HANDS_ON: (20, 80),
+            CourseStyle.BALANCED: (40, 60),
+            CourseStyle.CONCEPT: (60, 40)
+        }
+        theory_percent, code_percent = style_map[preferences.course_style]
+        
+        prompt = MODULE_CONTENT_PROMPT.format(
+            style=preferences.course_style,
+            module_title=module['title'],
+            topics=", ".join(module.get('topics', [])),
+            objectives=", ".join(module.get('learning_objectives', [])),
+            duration=module['estimated_minutes'],
+            level=preferences.learner_level,
+            theory_percent=theory_percent,
+            code_percent=code_percent
+        )
+        
+        content = self.llm.generate(
+            "You are an expert data science instructor.",
+            prompt
+        )
+        
+        # Generate exercises for the module
+        exercises = self.generate_exercises(
+            module['title'], 
+            preferences.learner_level
+        )
+        
+        return Module(
+            id=module['id'],
+            title=module['title'],
+            content=content,
+            exercises=exercises,
+            estimated_minutes=module['estimated_minutes'],
+            order=module.get('order', 0)
+        )
+    
+    def generate_exercises(self, topic: str, level: str, count: int = 2) -> List[Dict]:
+        """Generate exercises for a topic"""
+        exercises = []
+        difficulty_map = {
+            LearnerLevel.BEGINNER: ["easy", "easy"],
+            LearnerLevel.INTERMEDIATE: ["easy", "medium"],
+            LearnerLevel.ADVANCED: ["medium", "hard"]
+        }
+        
+        for difficulty in difficulty_map.get(level, ["easy", "medium"]):
+            prompt = EXERCISE_GENERATOR_PROMPT.format(
+                topic=topic,
+                difficulty=difficulty,
+                focus_area="practical application"
+            )
+            
+            exercise = self.llm.generate_json(
+                "You are a coding exercise designer.",
+                prompt
+            )
+            exercise['id'] = str(uuid.uuid4())[:8]
+            exercises.append(exercise)
+        
+        return exercises
+    
+    def regenerate_exercise(self, topic: str, difficulty: str) -> Dict:
+        """Generate a new exercise variant"""
+        prompt = EXERCISE_GENERATOR_PROMPT.format(
+            topic=topic,
+            difficulty=difficulty,
+            focus_area="different approach"
+        )
+        
+        exercise = self.llm.generate_json(
+            "Generate a NEW, different exercise. Don't repeat previous patterns.",
+            prompt
+        )
+        exercise['id'] = str(uuid.uuid4())[:8]
+        return exercise
+----------------------------------------
+File: ./llm_repo_digest.sh
+----------------------------------------
+#!/bin/bash
+
+# Get repository name and set up output file
+REPO_NAME=$(basename "$PWD")
+OUTPUT_FILE="${REPO_NAME}_repo_digest.txt"
+
+# Define source code file extensions we want to include
+SOURCE_EXTENSIONS="\.(py|ipynb|js|jsx|ts|tsx|vue|java|cpp|hpp|c|h|go|rs|rb|php|cs|scala|kt|swift|m|mm|sh|bash|pl|pm|t|less|html|xml|sql|graphql|md|rst|tex|yaml|yml|json|coffee|dart|r|jl|lua|clj|cljs|ex|exs)$"
+
+# Define common patterns to exclude
+EXCLUDE_PATTERNS=(
+    # Version control
+    ".git"
+    "__pycache__"
+    
+    # Data and binary files
+    "*.csv"
+    "*.xlsx"
+    "*.json"
+    "*.log"
+    
+    # Build and environment
+    "node_modules"
+    "docker"
+    "venv"
+    ".env"
+    
+    # IDE and editor files
+    ".vscode"
+    ".idea"
+    "*.swp"
+)
+
+# Helper function to check if a file is binary
+is_binary() {
+    [ ! -f "$1" ] && return 1
+    local mime
+    mime=$(file -b --mime "$1")
+    case "$mime" in
+        *binary*) return 0 ;;
+        *charset=binary*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Build exclude arguments for find command
+build_find_excludes() {
+    local excludes=()
+    
+    # Process predefined exclude patterns
+    for pat in "${EXCLUDE_PATTERNS[@]}"; do
+        if [[ "$pat" == *[*?]* ]]; then
+            # Pattern contains wildcards - use -name
+            excludes+=("-name" "$pat" "-prune" "-o")
+        else
+            # No wildcards - use -path
+            excludes+=("-path" "./$pat" "-prune" "-o")
+        fi
+    done
+    
+    # Add patterns from .gitignore if it exists
+    if [ -f .gitignore ]; then
+        while IFS= read -r pattern; do
+            # Skip comments and empty lines
+            [[ "$pattern" =~ ^#.*$ || -z "$pattern" ]] && continue
+            
+            # Clean up pattern: remove trailing and leading slashes
+            pattern="${pattern%/}"
+            pattern="${pattern#/}"
+            [[ -n "$pattern" ]] || continue
+            
+            # Handle wildcards in gitignore patterns
+            if [[ "$pattern" == *[*?]* ]]; then
+                excludes+=("-name" "$pattern" "-prune" "-o")
+            else
+                excludes+=("-path" "./$pattern" "-prune" "-o")
+            fi
+        done < .gitignore
+    fi
+    
+    printf '%s\n' "${excludes[@]}"
+}
+
+# Initialize output file
+> "$OUTPUT_FILE"
+echo "Repository Source Code Contents" >> "$OUTPUT_FILE"
+echo "Generated on: $(date)" >> "$OUTPUT_FILE"
+echo "----------------------------------------" >> "$OUTPUT_FILE"
+
+# Initialize counters
+total_files=0
+included_files=0
+excluded_binary=0
+
+echo "Building find command..." >&2
+
+# Build the find command with excludes
+mapfile -t FIND_EXCLUDES < <(build_find_excludes)
+
+# Process files using find with proper array expansion
+while IFS= read -r -d $'\0' path; do
+    ((total_files++))
+    echo "Processing: $path"
+    
+    if [[ "$path" =~ $SOURCE_EXTENSIONS ]]; then
+        if ! is_binary "$path"; then
+            echo "File: $path" >> "$OUTPUT_FILE"
+            echo "----------------------------------------" >> "$OUTPUT_FILE"
+            cat "$path" >> "$OUTPUT_FILE"
+            echo -e "\n----------------------------------------" >> "$OUTPUT_FILE"
+            ((included_files++))
+        else
+            echo "Skipping binary: $path"
+            ((excluded_binary++))
+        fi
+    else
+        echo "Skipping non-source file: $path"
+    fi
+done < <(find . "${FIND_EXCLUDES[@]}" -type f -print0)
+
+# Print summary
+echo -e "\nSummary:"
+echo "Total files found: $total_files"
+echo "Included in output: $included_files"
+echo "Skipped binary files: $excluded_binary"
+echo "Output: $OUTPUT_FILE"
+----------------------------------------
