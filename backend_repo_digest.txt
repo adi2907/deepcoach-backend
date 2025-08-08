@@ -1,5 +1,73 @@
 Repository Source Code Contents
-Generated on: Thu Aug  7 23:37:52 IST 2025
+Generated on: Fri Aug  8 21:37:36 IST 2025
+----------------------------------------
+File: ./domains/data_science/prompts/toc_prompts.py
+----------------------------------------
+# ============================================================================
+# File: domains/data_science/prompts/toc_prompts.py
+# Generic prompt that passes user preferences to LLM without bias
+# ============================================================================
+
+# Single generic prompt that lets LLM decide based on user preferences
+DATA_SCIENCE_TOC_PROMPT = """
+Create a comprehensive Data Science curriculum Table of Contents based on the user's specific preferences and background.
+
+User's Complete Profile:
+{user_preferences}
+
+Instructions:
+1. Analyze the user's goals, experience level, learning style, time constraints, and technical background
+2. Design a curriculum that EXACTLY matches their stated preferences
+3. If they want career-focused content, emphasize job-ready skills
+4. If they want hands-on learning, prioritize practical projects over theory
+5. If they're a beginner, start with fundamentals; if advanced, focus on sophisticated topics
+6. Respect their time constraints and daily commitment preferences
+7. Build on their existing technical skills (programming, math, domain knowledge)
+
+Generate topics that cover relevant areas of data science:
+- Programming and tools
+- Mathematics and statistics  
+- Data manipulation and analysis
+- Machine learning
+- Data visualization
+- Specialized domains (NLP, computer vision, etc.)
+- Industry applications
+- Portfolio/project work
+
+Structure the curriculum to:
+- Have logical progression and clear prerequisites
+- Include realistic time estimates based on their availability
+- Mark essential vs optional topics based on their goals
+- Provide detailed subtopics that show learning value
+- Match the complexity to their experience level
+
+Let the user's stated preferences guide ALL decisions about:
+- Depth vs breadth
+- Theory vs practice ratio
+- Beginner vs advanced content
+- Career vs academic focus
+- Time allocation per topic
+
+Domain: data_science
+"""
+
+def get_toc_prompt(user_preferences: dict) -> str:
+    """
+    Format the generic prompt with user preferences
+    No selection logic - just pass everything to LLM
+    """
+    # Convert user preferences to a readable format for the LLM
+    formatted_preferences = []
+    
+    for key, value in user_preferences.items():
+        if isinstance(value, list):
+            formatted_preferences.append(f"- {key.replace('_', ' ').title()}: {', '.join(value) if value else 'None specified'}")
+        else:
+            formatted_preferences.append(f"- {key.replace('_', ' ').title()}: {value}")
+    
+    preferences_text = '\n'.join(formatted_preferences)
+    
+    return DATA_SCIENCE_TOC_PROMPT.format(user_preferences=preferences_text)
 ----------------------------------------
 File: ./models.py
 ----------------------------------------
@@ -46,6 +114,80 @@ class OnboardingData(BaseModel):
     total_time_detailed: Optional[TotalTime] = None
     daily_time_detailed: Optional[DailyTime] = None
     technical_background: Optional[TechnicalBackground] = None
+----------------------------------------
+File: ./models/toc_models.py
+----------------------------------------
+# ============================================================================
+# File: models/toc_models.py
+# Pydantic models for TOC and learning path structures
+# ============================================================================
+
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
+from enum import Enum
+
+class DifficultyLevel(str, Enum):
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+
+class TopicType(str, Enum):
+    THEORETICAL = "theoretical"
+    PRACTICAL = "practical"
+    MIXED = "mixed"
+
+class SubTopic(BaseModel):
+    id: str = Field(..., description="Unique identifier for the subtopic")
+    name: str = Field(..., description="Name of the subtopic")
+    description: str = Field(..., description="Brief description of what this subtopic covers")
+    estimated_hours: float = Field(..., description="Estimated time to complete in hours")
+    difficulty: DifficultyLevel = Field(..., description="Difficulty level of this subtopic")
+    prerequisites: List[str] = Field(default=[], description="List of prerequisite subtopic IDs")
+
+class Topic(BaseModel):
+    id: str = Field(..., description="Unique identifier for the topic")
+    name: str = Field(..., description="Name of the topic")
+    description: str = Field(..., description="Brief description of what this topic covers")
+    estimated_hours: float = Field(..., description="Total estimated time for this topic in hours")
+    difficulty: DifficultyLevel = Field(..., description="Overall difficulty level")
+    topic_type: TopicType = Field(..., description="Type of topic (theoretical/practical/mixed)")
+    subtopics: List[SubTopic] = Field(default=[], description="List of subtopics under this topic")
+    prerequisites: List[str] = Field(default=[], description="List of prerequisite topic IDs")
+    is_core: bool = Field(..., description="Whether this topic is core/essential for the domain")
+
+class TableOfContents(BaseModel):
+    domain: str = Field(..., description="The domain this TOC is for (e.g., 'data_science', 'cat_exam')")
+    title: str = Field(..., description="Title of the course/curriculum")
+    description: str = Field(..., description="Brief description of the overall curriculum")
+    total_estimated_hours: float = Field(..., description="Total estimated time for all topics")
+    topics: List[Topic] = Field(..., description="List of all topics in the curriculum")
+    learning_path_suggestions: List[str] = Field(
+        default=[], 
+        description="Suggested topic IDs for different learning paths"
+    )
+
+class LearningPath(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    session_id: str = Field(..., description="Session identifier")
+    domain: str = Field(..., description="Domain for this learning path")
+    selected_topics: List[str] = Field(..., description="List of selected topic IDs")
+    estimated_total_hours: float = Field(..., description="Total estimated hours for selected topics")
+    created_at: str = Field(..., description="When this learning path was created")
+    user_preferences: Optional[Dict[str, Any]] = Field(
+        default=None, 
+        description="User preferences from onboarding"
+    )
+
+# Response models for API endpoints
+class TOCResponse(BaseModel):
+    success: bool = Field(default=True)
+    data: TableOfContents = Field(..., description="Generated table of contents")
+    message: str = Field(default="TOC generated successfully")
+
+class LearningPathResponse(BaseModel):
+    success: bool = Field(default=True)
+    data: LearningPath = Field(..., description="Created learning path")
+    message: str = Field(default="Learning path created successfully")
 ----------------------------------------
 File: ./prompts.py
 ----------------------------------------
@@ -216,78 +358,6 @@ Provide a helpful, personalized hint that:
 - Is appropriately technical for their skill level
 """
 ----------------------------------------
-File: ./llm_service.py
-----------------------------------------
-import requests
-from typing import Dict, Any
-import json
-import os
-from tenacity import retry, wait_exponential, stop_after_attempt
-
-class LLMService:
-    def __init__(self, model: str = "openai/gpt-oss-20b:free"):
-        self.api_key = os.getenv("OPENROUTER_API_KEY")
-        if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY environment variable is required")
-        
-        self.base_url = "https://openrouter.ai/api/v1"
-        self.model = model
-        
-    @retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(3))
-    def generate(self, system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
-        """Basic LLM generation with retry logic"""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://your-app.com",  # Optional: for OpenRouter analytics
-            "X-Title": "Data Science Course Generator"  # Optional: for OpenRouter analytics
-        }
-        
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            "temperature": temperature
-        }
-        
-        response = requests.post(
-            f"{self.base_url}/chat/completions",
-            headers=headers,
-            json=payload
-        )
-        
-        if response.status_code != 200:
-            raise Exception(f"API request failed: {response.status_code} - {response.text}")
-        
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    
-    def generate_json(self, system_prompt: str, user_prompt: str) -> Dict:
-        """Generate and parse JSON response"""
-        response = self.generate(system_prompt, user_prompt, temperature=0.3)
-        
-        # Extract JSON from response (handle markdown code blocks)
-        if "```json" in response:
-            response = response.split("```json")[1].split("```")[0]
-        elif "```" in response:
-            response = response.split("```")[1].split("```")[0]
-        
-        try:
-            return json.loads(response.strip())
-        except json.JSONDecodeError as e:
-            # If JSON parsing fails, try to extract just the JSON part
-            import re
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group())
-            raise Exception(f"Failed to parse JSON response: {e}")
-    
-    def set_model(self, model: str):
-        """Switch models on the fly"""
-        self.model = model
-----------------------------------------
 File: ./coach_service.py
 ----------------------------------------
 # ============================================================================
@@ -296,7 +366,7 @@ File: ./coach_service.py
 # ============================================================================
 
 from typing import Optional, List, Dict 
-from llm_service import LLMService
+from backend.services.llm_service import LLMService
 from prompts import COACH_HINT_PROMPT
 
 class CoachService:
@@ -584,360 +654,454 @@ Return JSON with this structure:
 if __name__ == "__main__":
     test_openrouter()
 ----------------------------------------
+File: ./api/routes/toc_routes.py
+----------------------------------------
+# ============================================================================
+# File: api/routes/toc_routes.py
+# API routes for TOC generation and learning path creation
+# ============================================================================
+
+from fastapi import APIRouter, HTTPException, Depends
+from typing import Dict, Any, List
+from pydantic import BaseModel, Field
+import uuid
+import logging
+
+from generators.toc_generator import TOCGenerator
+from services.learning_path_service import learning_path_service
+from models.toc_models import TOCResponse, LearningPathResponse
+from domains.data_science.prompts.toc_prompts import get_toc_prompt
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/toc", tags=["Table of Contents"])
+
+# Request models
+class TOCRequest(BaseModel):
+    domain: str = Field(..., description="Domain for curriculum (e.g., 'data_science')")
+    user_preferences: Dict[str, Any] = Field(..., description="User preferences from onboarding")
+
+class LearningPathRequest(BaseModel):
+    session_id: str = Field(..., description="Session ID from TOC generation")
+    user_id: str = Field(..., description="User identifier")
+    selected_topic_ids: List[str] = Field(..., description="List of selected topic IDs")
+
+class LearningPathUpdateRequest(BaseModel):
+    session_id: str = Field(..., description="Session ID")
+    selected_topic_ids: List[str] = Field(..., description="Updated list of selected topic IDs")
+
+# Dependency to get TOC generator
+def get_toc_generator() -> TOCGenerator:
+    return TOCGenerator()
+
+@router.post("/generate", response_model=TOCResponse)
+async def generate_toc(
+    request: TOCRequest,
+    toc_generator: TOCGenerator = Depends(get_toc_generator)
+):
+    """
+    Generate Table of Contents based on domain and user preferences
+    """
+    try:
+        session_id = str(uuid.uuid4())
+        
+        logger.info(f"Generating TOC for domain: {request.domain}")
+        logger.info(f"Session ID: {session_id}")
+        
+        # Get domain-specific prompt
+        if request.domain == "data_science":
+            domain_prompt = get_toc_prompt(request.user_preferences)
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Domain '{request.domain}' not supported yet"
+            )
+        
+        # Generate TOC
+        toc = toc_generator.generate_toc(
+            domain=request.domain,
+            user_preferences=request.user_preferences,
+            domain_prompt=domain_prompt
+        )
+        
+        # Store TOC in learning path service
+        learning_path_service.store_toc(session_id, toc)
+        
+        logger.info(f"Successfully generated TOC with {len(toc.topics)} topics")
+        
+        return TOCResponse(
+            data=toc,
+            message=f"TOC generated successfully for {request.domain}"
+        )
+        
+    except Exception as e:
+        logger.error(f"TOC generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"TOC generation failed: {str(e)}")
+
+@router.get("/session/{session_id}")
+async def get_toc_by_session(session_id: str):
+    """
+    Retrieve TOC by session ID
+    """
+    try:
+        toc = learning_path_service.get_toc(session_id)
+        if not toc:
+            raise HTTPException(status_code=404, detail="TOC not found")
+        
+        return TOCResponse(
+            data=toc,
+            message="TOC retrieved successfully"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving TOC: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/learning-path", response_model=LearningPathResponse)
+async def create_learning_path(request: LearningPathRequest):
+    """
+    Create learning path from selected topics
+    """
+    try:
+        logger.info(f"Creating learning path for user {request.user_id}")
+        logger.info(f"Selected topics: {request.selected_topic_ids}")
+        
+        learning_path = learning_path_service.create_learning_path(
+            user_id=request.user_id,
+            session_id=request.session_id,
+            selected_topic_ids=request.selected_topic_ids
+        )
+        
+        return LearningPathResponse(
+            data=learning_path,
+            message=f"Learning path created with {len(request.selected_topic_ids)} topics"
+        )
+        
+    except ValueError as e:
+        logger.error(f"Invalid learning path request: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Learning path creation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/learning-path", response_model=LearningPathResponse)
+async def update_learning_path(request: LearningPathUpdateRequest):
+    """
+    Update existing learning path with new topic selection
+    """
+    try:
+        logger.info(f"Updating learning path for session {request.session_id}")
+        
+        learning_path = learning_path_service.update_learning_path(
+            session_id=request.session_id,
+            selected_topic_ids=request.selected_topic_ids
+        )
+        
+        return LearningPathResponse(
+            data=learning_path,
+            message=f"Learning path updated with {len(request.selected_topic_ids)} topics"
+        )
+        
+    except ValueError as e:
+        logger.error(f"Invalid learning path update: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Learning path update failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/learning-path/{session_id}")
+async def get_learning_path(session_id: str):
+    """
+    Get learning path by session ID
+    """
+    try:
+        learning_path = learning_path_service.get_learning_path(session_id)
+        if not learning_path:
+            raise HTTPException(status_code=404, detail="Learning path not found")
+        
+        return LearningPathResponse(
+            data=learning_path,
+            message="Learning path retrieved successfully"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving learning path: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/user/{user_id}/learning-paths")
+async def get_user_learning_paths(user_id: str):
+    """
+    Get all learning paths for a user
+    """
+    try:
+        learning_paths = learning_path_service.get_user_learning_paths(user_id)
+        
+        return {
+            "success": True,
+            "data": learning_paths,
+            "count": len(learning_paths),
+            "message": f"Retrieved {len(learning_paths)} learning paths"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving user learning paths: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/topic/{session_id}/{topic_id}")
+async def get_topic_details(session_id: str, topic_id: str):
+    """
+    Get detailed information about a specific topic
+    """
+    try:
+        topic_details = learning_path_service.get_topic_details(session_id, topic_id)
+        if not topic_details:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        
+        return {
+            "success": True,
+            "data": topic_details,
+            "message": "Topic details retrieved successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving topic details: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/statistics")
+async def get_toc_statistics():
+    """
+    Get TOC service statistics
+    """
+    try:
+        stats = learning_path_service.get_statistics()
+        return {
+            "success": True,
+            "data": stats,
+            "message": "Statistics retrieved successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+----------------------------------------
+File: ./generators/toc_generator.py
+----------------------------------------
+# ============================================================================
+# File: generators/toc_generator.py
+# Completely generic TOC generator - no opinions, just passes data to LLM
+# ============================================================================
+
+from typing import Dict, Any
+from services.llm_service import LLMService
+from models.toc_models import TableOfContents
+import logging
+
+logger = logging.getLogger(__name__)
+
+class TOCGenerator:
+    def __init__(self, model: str = "openai/gpt-oss-20b:free"):
+        self.llm = LLMService(model=model)
+    
+    def generate_toc(self, 
+                     domain: str, 
+                     user_preferences: Dict[str, Any], 
+                     domain_prompt: str) -> TableOfContents:
+        """
+        Generate Table of Contents using domain-specific prompt
+        
+        This is a completely generic wrapper - it doesn't make any decisions
+        about the curriculum. All logic is delegated to the LLM via the domain prompt.
+        
+        Args:
+            domain: Domain identifier (e.g., 'data_science', 'cat_exam')
+            user_preferences: Complete user preferences from onboarding
+            domain_prompt: Domain-specific prompt template
+            
+        Returns:
+            TableOfContents: Structured TOC generated by LLM
+        """
+        
+        # Simple system prompt that doesn't bias the LLM
+        system_prompt = f"""You are an expert curriculum designer for {domain}. 
+        
+        Your job is to create a personalized Table of Contents that perfectly matches 
+        the user's stated preferences and goals. 
+        
+        Be completely responsive to their:
+        - Learning goals and objectives
+        - Experience level and background
+        - Time constraints and availability  
+        - Learning style preferences
+        - Technical background
+        
+        Do not impose any predetermined structure or bias. Let their preferences 
+        guide every decision about topics, depth, difficulty, and focus areas.
+        
+        Generate a comprehensive yet personalized curriculum that they will actually 
+        want to follow and complete.
+        
+        Return valid JSON that matches the required schema exactly."""
+        
+        logger.info(f"Generating TOC for domain: {domain}")
+        logger.debug(f"User preferences keys: {list(user_preferences.keys())}")
+        
+        try:
+            toc = self.llm.generate_structured(
+                system_prompt=system_prompt,
+                user_prompt=domain_prompt,
+                response_model=TableOfContents,
+                temperature=0.7  # Allow creativity while staying structured
+            )
+            
+            logger.info(f"Successfully generated TOC with {len(toc.topics)} topics")
+            logger.info(f"Total estimated hours: {toc.total_estimated_hours}")
+            
+            return toc
+            
+        except Exception as e:
+            logger.error(f"Failed to generate TOC: {str(e)}")
+            raise Exception(f"TOC generation failed: {str(e)}")
+    
+    def set_model(self, model: str):
+        """Switch LLM model"""
+        self.llm.set_model(model)
+        logger.info(f"TOC Generator switched to model: {model}")
+----------------------------------------
 File: ./main.py
 ----------------------------------------
 # ============================================================================
 # File: main.py
-# Enhanced FastAPI app with rich onboarding data handling
+# Updated FastAPI app with new TOC generation architecture
 # ============================================================================
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
-import uuid
 import logging
-from llm_service import LLMService
-from coach_service import CoachService
-from models import OnboardingData, TechnicalBackground
-from prompts import (
-    COURSE_STRUCTURE_PROMPT, 
-    MODULE_CONTENT_PROMPT, 
-    EXERCISE_GENERATOR_PROMPT,
-    COACH_HINT_PROMPT
-)
+import os
+from dotenv import load_dotenv
+
+# Import new route modules
+from api.routes.toc_routes import router as toc_router
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Learning Platform API", version="2.0.0")
+# Create FastAPI app
+app = FastAPI(
+    title="Learning Platform API",
+    description="Modular learning platform with domain-specific curriculum generation",
+    version="3.0.0"
+)
 
 # Enable CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Enhanced in-memory storage with richer data
-sessions = {}
+# Include routers
+app.include_router(toc_router)
 
-# Updated CourseRequest model with optional rich data
-class CourseRequest(BaseModel):
-    topic: str
-    level: str
-    style: str
-    total_hours: int
-    daily_minutes: int
-    onboarding_data: Optional[OnboardingData] = None  # Rich onboarding data
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "message": "Learning Platform API v3.0",
+        "features": [
+            "Modular TOC generation",
+            "Domain-specific prompts", 
+            "Structured LLM output",
+            "Learning path management"
+        ]
+    }
 
-class QuestionRequest(BaseModel):
-    question: str
-    context: Dict[str, Any]
-
-class HintRequest(BaseModel):
-    exercise: Dict[str, Any]
-    user_code: str
-    attempt: int
-    time_spent: Optional[int] = 0
-
-@app.post("/api/generate-course")
-async def generate_course(request: CourseRequest):
-    """
-    Enhanced course generation endpoint that uses rich onboarding data
-    """
-    try:
-        session_id = str(uuid.uuid4())
-        llm = LLMService("openai/gpt-oss-20b:free")
-        
-        # Log the enhanced data we received
-        logger.info(f"Generating course for session {session_id}")
-        logger.info(f"Basic request: {request.topic}, {request.level}, {request.style}")
-        
-        if request.onboarding_data:
-            logger.info(f"Rich onboarding data received:")
-            logger.info(f"  Goal: {request.onboarding_data.goal}")
-            logger.info(f"  Detailed level: {request.onboarding_data.learner_level_detailed}")
-            if request.onboarding_data.technical_background:
-                logger.info(f"  Programming skills: {request.onboarding_data.technical_background.programming}")
-                logger.info(f"  Math background: {request.onboarding_data.technical_background.math}")
-                logger.info(f"  Domain knowledge: {request.onboarding_data.technical_background.domain}")
-
-        # Prepare enhanced prompt data
-        onboarding = request.onboarding_data or OnboardingData()
-        tech_bg = onboarding.technical_background or TechnicalBackground()
-        
-        # Generate enhanced course structure using existing prompt
-        course_prompt = COURSE_STRUCTURE_PROMPT.format(
-            topic=request.topic,
-            goal=onboarding.goal or "general learning",
-            level=request.level,
-            detailed_level=onboarding.learner_level_detailed or request.level,
-            style=request.style,
-            detailed_style=onboarding.course_material_detailed or request.style,
-            total_hours=request.total_hours,
-            detailed_total_time=onboarding.total_time_detailed or f"{request.total_hours} hours",
-            daily_minutes=request.daily_minutes,
-            detailed_daily_time=onboarding.daily_time_detailed or f"{request.daily_minutes} minutes",
-            programming_skills=", ".join(tech_bg.programming) if tech_bg.programming else "No prior programming experience",
-            math_background=", ".join(tech_bg.math) if tech_bg.math else "High school level",
-            domain_knowledge=", ".join(tech_bg.domain) if tech_bg.domain else "No prior experience"
-        )
-        
-        course_structure = llm.generate_json(
-            "You are an expert course designer who personalizes learning based on student background. Return valid JSON only.",
-            course_prompt
-        )
-        
-        # Store enhanced session data
-        sessions[session_id] = {
-            "course": course_structure,
-            "request": request.dict(),
-            "onboarding_data": onboarding.dict() if onboarding else None,
-            "coach": CoachService("openai/gpt-oss-20b:free"),
-            "personalization_context": {
-                "goal": onboarding.goal,
-                "programming_skills": tech_bg.programming,
-                "math_background": tech_bg.math,
-                "domain_knowledge": tech_bg.domain,
-                "experience_level": onboarding.learner_level_detailed
-            }
-        }
-        
-        logger.info(f"Course generated successfully with {len(course_structure.get('modules', []))} modules")
-        
-        return {
-            "session_id": session_id,
-            "course": course_structure,
-            "personalization_applied": bool(request.onboarding_data),
-            "student_profile": {
-                "goal": onboarding.goal,
-                "experience": onboarding.learner_level_detailed,
-                "learning_style": onboarding.course_material_detailed,
-                "technical_background": tech_bg.dict() if tech_bg else None
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Error generating course: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Course generation failed: {str(e)}")
-
-@app.get("/api/module/{session_id}/{module_index}")
-async def get_module(session_id: str, module_index: int):
-    """
-    Enhanced module content generation using personalization context
-    """
-    try:
-        if session_id not in sessions:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
-        session = sessions[session_id]
-        course_modules = session["course"]["modules"]
-        
-        if module_index >= len(course_modules):
-            raise HTTPException(status_code=404, detail="Module not found")
-            
-        module = course_modules[module_index]
-        personalization = session.get("personalization_context", {})
-        
-        llm = LLMService("openai/gpt-oss-20b:free")
-        
-        # Determine theory/practice split based on learning style
-        style_ratios = {
-            "hands_on": (20, 80),
-            "balanced": (40, 60), 
-            "concept": (60, 40)
-        }
-        theory_percent, code_percent = style_ratios.get(session["request"]["style"], (40, 60))
-        
-        # Generate personalized module content using existing prompt
-        content_prompt = MODULE_CONTENT_PROMPT.format(
-            style=session["request"]["style"],
-            module_title=module["title"],
-            goal=personalization.get("goal", "learning"),
-            level=session["request"]["level"],
-            programming_skills=", ".join(personalization.get("programming_skills", [])) or "basic",
-            math_background=", ".join(personalization.get("math_background", [])) or "high school",
-            domain_knowledge=", ".join(personalization.get("domain_knowledge", [])) or "none",
-            topics=", ".join(module["topics"]),
-            objectives=", ".join(module["learning_objectives"]),
-            duration=module["estimated_minutes"],
-            difficulty_level=module.get("difficulty_level", "beginner"),
-            skip_basics=", ".join(session["course"].get("personalization_notes", {}).get("skipped_basics", [])),
-            emphasis_areas=", ".join(session["course"].get("personalization_notes", {}).get("emphasis_areas", [])),
-            goal_connection=module.get("aligns_with_goal", "general skill building"),
-            theory_percent=theory_percent,
-            code_percent=code_percent
-        )
-        
-        content = llm.generate(
-            "You are an expert educator who personalizes content based on student background.",
-            content_prompt
-        )
-        
-        # Generate personalized exercises using existing prompt
-        exercises = []
-        for i, topic in enumerate(module["topics"][:2]):
-            exercise_prompt = EXERCISE_GENERATOR_PROMPT.format(
-                topic=topic,
-                programming_level=personalization.get("experience_level", "beginner"),
-                math_level=", ".join(personalization.get("math_background", [])) or "basic",
-                goal=personalization.get("goal", "learning"),
-                domain_experience=", ".join(personalization.get("domain_knowledge", [])) or "none",
-                difficulty=module.get("difficulty_level", "beginner"),
-                focus_area="practical application",
-                estimated_minutes=15,
-                familiar_libraries="pandas, numpy" if "comfortable-python" in personalization.get("programming_skills", []) else "basic Python",
-                avoid_concepts="advanced statistics" if not personalization.get("math_background") else "",
-                familiar_concept="variables and functions" if "basic-python" in personalization.get("programming_skills", []) else "programming basics",
-                previous_experience=personalization.get("goal", "learning")
-            )
-            
-            exercise = llm.generate_json(
-                "Generate a personalized coding exercise. Return valid JSON only.",
-                exercise_prompt
-            )
-            exercise["id"] = f"ex_{module_index}_{i}"
-            exercises.append(exercise)
-        
-        logger.info(f"Generated personalized module {module_index} for session {session_id}")
-        
-        return {
-            "title": module["title"],
-            "content": content,
-            "exercises": exercises,
-            "estimated_minutes": module["estimated_minutes"],
-            "personalization_applied": {
-                "goal_aligned": True,
-                "skill_adapted": True,
-                "background_considered": True
-            },
-            "learning_objectives": module["learning_objectives"],
-            "difficulty_level": module.get("difficulty_level", "beginner")
-        }
-        
-    except Exception as e:
-        logger.error(f"Error generating module content: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/coach/question")
-async def ask_coach_question(request: QuestionRequest):
-    """
-    Enhanced coach that uses student context for personalized responses
-    """
-    try:
-        # Try to get session context if available
-        session_id = request.context.get("session_id")
-        personalization_context = {}
-        
-        if session_id and session_id in sessions:
-            personalization_context = sessions[session_id].get("personalization_context", {})
-            coach = sessions[session_id]["coach"]
-        else:
-            coach = CoachService("openai/gpt-oss-20b:free")
-        
-        # Create personalized coaching context
-        coaching_context = f"""
-        Student Context:
-        - Goal: {personalization_context.get('goal', 'general learning')}
-        - Experience: {personalization_context.get('experience_level', 'beginner')}
-        - Programming Background: {', '.join(personalization_context.get('programming_skills', [])) or 'basic'}
-        - Current Topic: {request.context.get('module_title', 'unknown')}
-        
-        Question: {request.question}
-        
-        Provide a personalized answer that:
-        1. Acknowledges their background and goals
-        2. Uses appropriate technical level
-        3. Connects to their stated learning objective
-        4. Encourages continued progress
-        """
-        
-        answer = coach.answer_question(coaching_context, request.context)
-        
-        return {
-            "answer": answer,
-            "personalized": bool(personalization_context),
-            "context_used": {
-                "goal": personalization_context.get('goal'),
-                "experience": personalization_context.get('experience_level')
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Error in coach question: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/coach/hint")
-async def get_hint(request: HintRequest):
-    """
-    Enhanced hint generation using student background
-    """
-    try:
-        # Default coaching service
-        coach = CoachService("openai/gpt-oss-20b:free")
-        
-        # Use personalized hint prompt
-        hint_prompt = COACH_HINT_PROMPT.format(
-            goal="career advancement",  # Default - could be enhanced with session context
-            experience_level="beginner",  # Default - could be enhanced with session context
-            programming_background="basic Python",  # Default - could be enhanced with session context
-            math_background="high school level",  # Default - could be enhanced with session context
-            exercise_title=request.exercise.get('title', ''),
-            user_code=request.user_code,
-            error="No error" if not request.user_code else "Check syntax",
-            attempt=request.attempt,
-            time_spent=request.time_spent or 0
-        )
-        
-        hint = coach.get_hint(request.exercise, request.user_code, request.attempt)
-        
-        return {
-            "hint": hint,
-            "attempt_number": request.attempt,
-            "encouragement": "You're making great progress! Keep going!" if request.attempt < 3 else "Don't give up! Learning takes time and practice."
-        }
-        
-    except Exception as e:
-        logger.error(f"Error generating hint: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Health check endpoint
 @app.get("/api/health")
 async def health_check():
+    """Health check endpoint"""
+    
+    # Check if OpenRouter API key is configured
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    api_configured = bool(api_key and api_key != "your-key-here")
+    
     return {
         "status": "healthy",
-        "version": "2.0.0",
+        "version": "3.0.0",
+        "api_configured": api_configured,
         "features": {
-            "enhanced_onboarding": True,
-            "personalized_content": True,
-            "context_aware_coaching": True
+            "toc_generation": True,
+            "learning_path_management": True,
+            "structured_output": True,
+            "domain_prompts": True
         }
     }
 
-# Analytics endpoint for tracking onboarding completion
-@app.post("/api/analytics/onboarding-completed")
-async def track_onboarding_completion(data: Dict[str, Any]):
-    """
-    Track onboarding completion for analytics
-    """
-    logger.info(f"Onboarding completed: {data}")
-    # Here you could send to analytics service, database, etc.
-    return {"status": "tracked", "timestamp": data.get("timestamp")}
+@app.get("/api/domains")
+async def get_supported_domains():
+    """Get list of supported domains"""
+    return {
+        "success": True,
+        "data": {
+            "supported_domains": [
+                {
+                    "id": "data_science",
+                    "name": "Data Science",
+                    "description": "Comprehensive data science curriculum with ML, statistics, and programming",
+                    "status": "active"
+                }
+            ],
+            "coming_soon": [
+                {
+                    "id": "cat_exam", 
+                    "name": "CAT Exam Preparation",
+                    "description": "Quantitative Aptitude, Verbal Ability, and Logical Reasoning",
+                    "status": "development"
+                }
+            ]
+        },
+        "message": "Supported domains retrieved successfully"
+    }
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Global exception: {str(exc)}")
+    return HTTPException(
+        status_code=500,
+        detail=f"Internal server error: {str(exc)}"
+    )
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(
+        "main:app",  # Import string instead of app object
+        host="0.0.0.0", 
+        port=8000, 
+        log_level="info",
+        reload=True  # Enable auto-reload during development
+    )
 ----------------------------------------
 File: ./content_generator.py
 ----------------------------------------
 from typing import List, Dict
 import uuid
 from models import *
-from llm_service import LLMService
+from backend.services.llm_service import LLMService
 from prompts import *
 
 class ContentGenerator:
@@ -1175,4 +1339,301 @@ echo "Total files found: $total_files"
 echo "Included in output: $included_files"
 echo "Skipped binary files: $excluded_binary"
 echo "Output: $OUTPUT_FILE"
+----------------------------------------
+File: ./services/learning_path_service.py
+----------------------------------------
+# ============================================================================
+# File: services/learning_path_service.py
+# Service to manage learning paths with in-memory storage
+# ============================================================================
+
+from typing import Dict, List, Any, Optional
+from models.toc_models import LearningPath, TableOfContents
+import uuid
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+class LearningPathService:
+    def __init__(self):
+        # In-memory storage for learning paths and TOCs
+        self.learning_paths: Dict[str, LearningPath] = {}
+        self.tocs: Dict[str, TableOfContents] = {}
+        self.user_sessions: Dict[str, List[str]] = {}  # user_id -> list of session_ids
+    
+    def store_toc(self, session_id: str, toc: TableOfContents) -> None:
+        """Store generated TOC for a session"""
+        self.tocs[session_id] = toc
+        logger.info(f"Stored TOC for session {session_id} with {len(toc.topics)} topics")
+    
+    def get_toc(self, session_id: str) -> Optional[TableOfContents]:
+        """Retrieve TOC for a session"""
+        return self.tocs.get(session_id)
+    
+    def create_learning_path(self, 
+                           user_id: str,
+                           session_id: str,
+                           selected_topic_ids: List[str],
+                           user_preferences: Optional[Dict[str, Any]] = None) -> LearningPath:
+        """
+        Create a learning path from selected topics
+        
+        Args:
+            user_id: User identifier
+            session_id: Session identifier 
+            selected_topic_ids: List of topic IDs selected by user
+            user_preferences: User preferences from onboarding
+            
+        Returns:
+            LearningPath: Created learning path object
+        """
+        
+        # Get the TOC for this session
+        toc = self.get_toc(session_id)
+        if not toc:
+            raise ValueError(f"No TOC found for session {session_id}")
+        
+        # Validate selected topics exist in TOC
+        toc_topic_ids = {topic.id for topic in toc.topics}
+        invalid_topics = set(selected_topic_ids) - toc_topic_ids
+        if invalid_topics:
+            raise ValueError(f"Invalid topic IDs: {invalid_topics}")
+        
+        # Calculate total estimated hours for selected topics
+        selected_topics = [topic for topic in toc.topics if topic.id in selected_topic_ids]
+        total_hours = sum(topic.estimated_hours for topic in selected_topics)
+        
+        # Create learning path
+        learning_path = LearningPath(
+            user_id=user_id,
+            session_id=session_id,
+            domain=toc.domain,
+            selected_topics=selected_topic_ids,
+            estimated_total_hours=total_hours,
+            created_at=datetime.now().isoformat(),
+            user_preferences=user_preferences
+        )
+        
+        # Store learning path
+        self.learning_paths[session_id] = learning_path
+        
+        # Track user sessions
+        if user_id not in self.user_sessions:
+            self.user_sessions[user_id] = []
+        self.user_sessions[user_id].append(session_id)
+        
+        logger.info(f"Created learning path for user {user_id}, session {session_id}")
+        logger.info(f"Selected {len(selected_topic_ids)} topics, estimated {total_hours:.1f} hours")
+        
+        return learning_path
+    
+    def get_learning_path(self, session_id: str) -> Optional[LearningPath]:
+        """Get learning path by session ID"""
+        return self.learning_paths.get(session_id)
+    
+    def get_user_learning_paths(self, user_id: str) -> List[LearningPath]:
+        """Get all learning paths for a user"""
+        session_ids = self.user_sessions.get(user_id, [])
+        return [self.learning_paths[sid] for sid in session_ids if sid in self.learning_paths]
+    
+    def update_learning_path(self, 
+                           session_id: str, 
+                           selected_topic_ids: List[str]) -> LearningPath:
+        """
+        Update an existing learning path with new topic selection
+        """
+        learning_path = self.get_learning_path(session_id)
+        if not learning_path:
+            raise ValueError(f"No learning path found for session {session_id}")
+        
+        # Get TOC and validate topics
+        toc = self.get_toc(session_id)
+        if not toc:
+            raise ValueError(f"No TOC found for session {session_id}")
+        
+        toc_topic_ids = {topic.id for topic in toc.topics}
+        invalid_topics = set(selected_topic_ids) - toc_topic_ids
+        if invalid_topics:
+            raise ValueError(f"Invalid topic IDs: {invalid_topics}")
+        
+        # Recalculate total hours
+        selected_topics = [topic for topic in toc.topics if topic.id in selected_topic_ids]
+        total_hours = sum(topic.estimated_hours for topic in selected_topics)
+        
+        # Update learning path
+        learning_path.selected_topics = selected_topic_ids
+        learning_path.estimated_total_hours = total_hours
+        
+        logger.info(f"Updated learning path for session {session_id}")
+        logger.info(f"New selection: {len(selected_topic_ids)} topics, {total_hours:.1f} hours")
+        
+        return learning_path
+    
+    def get_topic_details(self, session_id: str, topic_id: str) -> Optional[Dict[str, Any]]:
+        """Get detailed information about a specific topic"""
+        toc = self.get_toc(session_id)
+        if not toc:
+            return None
+        
+        for topic in toc.topics:
+            if topic.id == topic_id:
+                return {
+                    "topic": topic.dict(),
+                    "prerequisites": [
+                        self._get_topic_by_id(toc, prereq_id) 
+                        for prereq_id in topic.prerequisites
+                    ],
+                    "dependents": [
+                        t.dict() for t in toc.topics 
+                        if topic_id in t.prerequisites
+                    ]
+                }
+        return None
+    
+    def _get_topic_by_id(self, toc: TableOfContents, topic_id: str) -> Optional[Dict[str, Any]]:
+        """Helper to get topic by ID"""
+        for topic in toc.topics:
+            if topic.id == topic_id:
+                return topic.dict()
+        return None
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get service statistics"""
+        return {
+            "total_tocs": len(self.tocs),
+            "total_learning_paths": len(self.learning_paths),
+            "total_users": len(self.user_sessions),
+            "average_topics_per_path": (
+                sum(len(lp.selected_topics) for lp in self.learning_paths.values()) / 
+                len(self.learning_paths) if self.learning_paths else 0
+            )
+        }
+
+# Global service instance
+learning_path_service = LearningPathService()
+----------------------------------------
+File: ./services/llm_service.py
+----------------------------------------
+# ============================================================================
+# File: services/llm_service.py
+# Enhanced LLM service with OpenRouter structured output support
+# ============================================================================
+
+import requests
+import json
+import os
+from typing import Dict, Any, Optional, Type
+from pydantic import BaseModel
+from tenacity import retry, wait_exponential, stop_after_attempt
+import logging
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+class LLMService:
+    def __init__(self, model: str = "openai/gpt-oss-20b:free"):
+        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY environment variable is required")
+        
+        self.base_url = "https://openrouter.ai/api/v1"
+        self.model = model
+        
+    @retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(3))
+    def generate(self, system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
+        """Basic LLM generation for unstructured output"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://learning-platform.com",
+            "X-Title": "Learning Platform"
+        }
+        
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": temperature
+        }
+        
+        response = requests.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"API request failed: {response.status_code} - {response.text}")
+        
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+    
+    @retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(3))
+    def generate_structured(self, 
+                          system_prompt: str, 
+                          user_prompt: str, 
+                          response_model: Type[BaseModel],
+                          temperature: float = 0.3) -> BaseModel:
+        """Generate structured output using OpenRouter's JSON schema feature"""
+        
+        # Generate JSON schema from Pydantic model
+        schema = response_model.model_json_schema()
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://learning-platform.com",
+            "X-Title": "Learning Platform"
+        }
+        
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": temperature,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": response_model.__name__.lower(),
+                    "strict": True,
+                    "schema": schema
+                }
+            }
+        }
+        
+        logger.info(f"Making structured request to {self.model}")
+        logger.debug(f"Schema: {schema}")
+        
+        response = requests.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"Structured API request failed: {response.status_code} - {response.text}")
+        
+        result = response.json()
+        content = result["choices"][0]["message"]["content"]
+        
+        # Parse and validate with Pydantic
+        try:
+            data = json.loads(content)
+            return response_model(**data)
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to parse structured response: {content}")
+            raise Exception(f"Failed to parse structured response: {e}")
+    
+    def set_model(self, model: str):
+        """Switch models on the fly"""
+        self.model = model
+        logger.info(f"Switched to model: {model}")
 ----------------------------------------
