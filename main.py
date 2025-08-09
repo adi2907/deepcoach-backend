@@ -1,6 +1,6 @@
 # ============================================================================
-# File: main.py (UPDATED)
-# Updated FastAPI app with module generation routes
+# File: main.py (MINIMAL CHANGES)
+# Updated FastAPI app with concept generation routes added
 # ============================================================================
 
 from fastapi import FastAPI, HTTPException
@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 # Import route modules
 from api.routes.toc_routes import router as toc_router
 from api.routes.module_routes import router as module_router
+from api.routes.concept_routes import router as concept_router  # NEW: Added concept routes
 
 # Load environment variables
 load_dotenv()
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Learning Platform API",
     description="Modular learning platform with domain-specific curriculum generation",
-    version="3.1.0"
+    version="4.0.0"  # UPDATED: Version bump
 )
 
 # Enable CORS for React frontend
@@ -42,19 +43,22 @@ app.add_middleware(
 # Include routers
 app.include_router(toc_router)
 app.include_router(module_router)
+app.include_router(concept_router)  # NEW: Added concept router
 
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
-        "message": "Learning Platform API v3.1",
+        "message": "Learning Platform API v4.0",  # UPDATED: Version
         "features": [
             "Modular TOC generation",
             "Domain-specific prompts", 
             "Structured LLM output",
             "Learning path management",
             "Module generation with navigation",
-            "Coach sidebar with motivation"
+            "Concept-level content generation",  # NEW: Added concept feature
+            "Tabbed content interface",  # NEW: Added tabbed interface
+            "Coach sidebar with concept tracking"  # UPDATED: Enhanced coach sidebar
         ]
     }
 
@@ -68,7 +72,7 @@ async def health_check():
     
     return {
         "status": "healthy",
-        "version": "3.1.0",
+        "version": "4.0.0",  # UPDATED: Version
         "api_configured": api_configured,
         "features": {
             "toc_generation": True,
@@ -76,8 +80,12 @@ async def health_check():
             "structured_output": True,
             "domain_prompts": True,
             "module_generation": True,
+            "concept_generation": True,  # NEW: Added concept generation
+            "content_blocks": True,  # NEW: Added content blocks
+            "notes_generation": True,  # NEW: Added notes generation
             "navigation_system": True,
-            "coach_sidebar": True
+            "coach_sidebar": True,
+            "tabbed_interface": True  # NEW: Added tabbed interface
         }
     }
 
@@ -96,8 +104,12 @@ async def get_supported_domains():
                     "features": {
                         "toc_generation": True,
                         "module_generation": True,
-                        "navigation_hierarchy": ["topic", "module"],
-                        "evaluation_types": ["coding_exercise", "quiz", "mixed"]
+                        "concept_generation": True,  # NEW: Added concept generation
+                        "content_generation": True,  # NEW: Added content generation
+                        "notes_generation": True,  # NEW: Added notes generation
+                        "navigation_hierarchy": ["topic", "module", "concept"],  # UPDATED: Added concept level
+                        "evaluation_types": ["coding_exercise", "quiz", "mixed"],
+                        "content_types": ["markdown_lessons", "code_examples", "interactive_exercises"]  # NEW: Added content types
                     }
                 }
             ],
@@ -110,6 +122,7 @@ async def get_supported_domains():
                     "features": {
                         "toc_generation": "planned",
                         "module_generation": "planned",
+                        "concept_generation": "planned",  # NEW: Added concept generation
                         "navigation_hierarchy": ["topic", "module", "concept", "sub_concept"],
                         "evaluation_types": ["mcq", "timed_test"]
                     }
