@@ -1,6 +1,6 @@
 # ============================================================================
-# File: main.py (MINIMAL CHANGES)
-# Updated FastAPI app with concept generation routes added
+# File: main.py (UPDATED)
+# Updated FastAPI app with onboarding question generation routes
 # ============================================================================
 
 from fastapi import FastAPI, HTTPException
@@ -12,7 +12,8 @@ from dotenv import load_dotenv
 # Import route modules
 from api.routes.toc_routes import router as toc_router
 from api.routes.module_routes import router as module_router
-from api.routes.concept_routes import router as concept_router  # NEW: Added concept routes
+from api.routes.concept_routes import router as concept_router
+from api.routes.onboarding_routes import router as onboarding_router  # NEW: Added onboarding routes
 
 # Load environment variables
 load_dotenv()
@@ -28,13 +29,16 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Learning Platform API",
     description="Modular learning platform with domain-specific curriculum generation",
-    version="4.0.0"  # UPDATED: Version bump
+    version="4.1.0"  # UPDATED: Version bump for onboarding
 )
 
 # Enable CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", 
+                   "http://127.0.0.1:3000",
+                   "https://deepcoach.vercel.app",
+                   "https://*.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,22 +47,24 @@ app.add_middleware(
 # Include routers
 app.include_router(toc_router)
 app.include_router(module_router)
-app.include_router(concept_router)  # NEW: Added concept router
+app.include_router(concept_router)
+app.include_router(onboarding_router)  # NEW: Added onboarding router
 
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
-        "message": "Learning Platform API v4.0",  # UPDATED: Version
+        "message": "Learning Platform API v4.1",  # UPDATED: Version
         "features": [
             "Modular TOC generation",
             "Domain-specific prompts", 
             "Structured LLM output",
             "Learning path management",
             "Module generation with navigation",
-            "Concept-level content generation",  # NEW: Added concept feature
-            "Tabbed content interface",  # NEW: Added tabbed interface
-            "Coach sidebar with concept tracking"  # UPDATED: Enhanced coach sidebar
+            "Concept-level content generation",
+            "Tabbed content interface",
+            "Coach sidebar with concept tracking",
+            "Generic onboarding with LLM question generation"  # NEW: Added onboarding feature
         ]
     }
 
@@ -72,7 +78,7 @@ async def health_check():
     
     return {
         "status": "healthy",
-        "version": "4.0.0",  # UPDATED: Version
+        "version": "4.1.0",  # UPDATED: Version
         "api_configured": api_configured,
         "features": {
             "toc_generation": True,
@@ -80,12 +86,14 @@ async def health_check():
             "structured_output": True,
             "domain_prompts": True,
             "module_generation": True,
-            "concept_generation": True,  # NEW: Added concept generation
-            "content_blocks": True,  # NEW: Added content blocks
-            "notes_generation": True,  # NEW: Added notes generation
+            "concept_generation": True,
+            "content_blocks": True,
+            "notes_generation": True,
             "navigation_system": True,
             "coach_sidebar": True,
-            "tabbed_interface": True  # NEW: Added tabbed interface
+            "tabbed_interface": True,
+            "generic_onboarding": True,  # NEW: Added generic onboarding
+            "question_generation": True  # NEW: Added question generation
         }
     }
 
@@ -97,6 +105,23 @@ async def get_supported_domains():
         "data": {
             "supported_domains": [
                 {
+                    "id": "generic",  # NEW: Added generic domain
+                    "name": "Any Topic",
+                    "description": "AI-generated curriculum for any learning topic",
+                    "status": "active",
+                    "features": {
+                        "toc_generation": True,
+                        "module_generation": True,
+                        "concept_generation": True,
+                        "content_generation": True,
+                        "notes_generation": True,
+                        "question_generation": True,  # NEW: Added question generation
+                        "navigation_hierarchy": ["topic", "module", "concept"],
+                        "evaluation_types": ["coding_exercise", "quiz", "mixed"],
+                        "content_types": ["markdown_lessons", "code_examples", "interactive_exercises"]
+                    }
+                },
+                {
                     "id": "data_science",
                     "name": "Data Science",
                     "description": "Comprehensive data science curriculum with ML, statistics, and programming",
@@ -104,12 +129,12 @@ async def get_supported_domains():
                     "features": {
                         "toc_generation": True,
                         "module_generation": True,
-                        "concept_generation": True,  # NEW: Added concept generation
-                        "content_generation": True,  # NEW: Added content generation
-                        "notes_generation": True,  # NEW: Added notes generation
-                        "navigation_hierarchy": ["topic", "module", "concept"],  # UPDATED: Added concept level
+                        "concept_generation": True,
+                        "content_generation": True,
+                        "notes_generation": True,
+                        "navigation_hierarchy": ["topic", "module", "concept"],
                         "evaluation_types": ["coding_exercise", "quiz", "mixed"],
-                        "content_types": ["markdown_lessons", "code_examples", "interactive_exercises"]  # NEW: Added content types
+                        "content_types": ["markdown_lessons", "code_examples", "interactive_exercises"]
                     }
                 }
             ],
@@ -122,7 +147,7 @@ async def get_supported_domains():
                     "features": {
                         "toc_generation": "planned",
                         "module_generation": "planned",
-                        "concept_generation": "planned",  # NEW: Added concept generation
+                        "concept_generation": "planned",
                         "navigation_hierarchy": ["topic", "module", "concept", "sub_concept"],
                         "evaluation_types": ["mcq", "timed_test"]
                     }
@@ -143,10 +168,11 @@ async def global_exception_handler(request, exc):
 
 if __name__ == "__main__":
     import uvicorn
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run(
         "main:app",  # Import string instead of app object
         host="0.0.0.0", 
-        port=8000, 
+        port=port, 
         log_level="info",
         reload=True  # Enable auto-reload during development
     )
